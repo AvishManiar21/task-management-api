@@ -288,12 +288,19 @@ export class LoggerService implements NestLoggerService {
   }
 
   /**
-   * Redact PII (Personally Identifiable Information) from logs
+   * Redact PII (Personally Identifiable Information) and sensitive data from logs
    *
    * Redacts sensitive fields to comply with security requirements:
-   * - password, token, authorization, apiKey, secret
-   * - ssn, creditCard, cvv
-   * - Any field ending with 'Token' or 'Secret'
+   * - Authentication: password, token, authorization, apiKey, secret
+   * - API Keys: keyHash, hash, plainKey, key, webhookSecret
+   * - Financial: ssn, creditCard, cvv
+   * - Pattern matching: any field ending with 'Token', 'Secret', 'Password', 'Hash', or 'Key'
+   *
+   * This prevents clear-text logging of sensitive information including:
+   * - Database password hashes
+   * - API key values and hashes
+   * - Authentication tokens
+   * - Webhook secrets
    *
    * @param info - Log info object
    * @returns Redacted log info
@@ -313,6 +320,11 @@ export class LoggerService implements NestLoggerService {
       'idToken',
       'clientSecret',
       'privateKey',
+      'keyHash',
+      'hash',
+      'plainKey',
+      'key',
+      'webhookSecret',
     ];
 
     // Redact top-level fields
@@ -336,10 +348,14 @@ export class LoggerService implements NestLoggerService {
             lowerKey === field.toLowerCase() ||
             lowerKey.endsWith('token') ||
             lowerKey.endsWith('secret') ||
-            lowerKey.endsWith('password')
+            lowerKey.endsWith('password') ||
+            lowerKey.endsWith('hash') ||
+            lowerKey.endsWith('key') ||
+            lowerKey.includes('apikey') ||
+            lowerKey.includes('plainkey')
           );
 
-          if (isSensitive && typeof obj[key] === 'string') {
+          if (isSensitive && (typeof obj[key] === 'string' || typeof obj[key] === 'number')) {
             obj[key] = '[REDACTED]';
           } else if (typeof obj[key] === 'object' && obj[key] !== null) {
             obj[key] = redactObject(obj[key]);
