@@ -1,8 +1,8 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions';
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
@@ -105,10 +105,10 @@ export function initializeTracing(): NodeSDK | null {
   }
 
   // Configure resource attributes (service metadata)
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-    [SemanticResourceAttributes.SERVICE_VERSION]: serviceVersion,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: serviceVersion,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   });
 
   // Configure sampling strategy
@@ -132,17 +132,16 @@ export function initializeTracing(): NodeSDK | null {
         '@opentelemetry/instrumentation-http': {
           enabled: true,
           // Ignore health check endpoints
-          ignoreIncomingPaths: ['/health', '/ready', '/metrics'],
+          ignoreIncomingRequestHook: (request) => {
+            const ignorePaths = ['/health', '/ready', '/metrics'];
+            return ignorePaths.some(path => request.url?.includes(path));
+          },
         },
         // PostgreSQL instrumentation
         '@opentelemetry/instrumentation-pg': {
           enabled: true,
           // Enhance with SQL parameters (be careful with PII)
           enhancedDatabaseReporting: false, // Set to true only in development
-        },
-        // Redis instrumentation
-        '@opentelemetry/instrumentation-redis-4': {
-          enabled: true,
         },
         // Express instrumentation
         '@opentelemetry/instrumentation-express': {
