@@ -204,7 +204,7 @@ export class LoggerService implements NestLoggerService {
    * @param context - Optional context (overrides global context)
    */
   log(message: string, context?: string | LogContext): void {
-    const logContext = this.buildContext(context);
+    const logContext = this.sanitizeContext(this.buildContext(context));
     this.winstonLogger.info(message, logContext);
   }
 
@@ -220,7 +220,7 @@ export class LoggerService implements NestLoggerService {
     if (trace) {
       logContext.trace = trace;
     }
-    this.winstonLogger.error(message, logContext);
+    this.winstonLogger.error(message, this.sanitizeContext(logContext));
   }
 
   /**
@@ -230,7 +230,7 @@ export class LoggerService implements NestLoggerService {
    * @param context - Optional context (overrides global context)
    */
   warn(message: string, context?: string | LogContext): void {
-    const logContext = this.buildContext(context);
+    const logContext = this.sanitizeContext(this.buildContext(context));
     this.winstonLogger.warn(message, logContext);
   }
 
@@ -243,7 +243,7 @@ export class LoggerService implements NestLoggerService {
    * @param context - Optional context (overrides global context)
    */
   debug(message: string, context?: string | LogContext): void {
-    const logContext = this.buildContext(context);
+    const logContext = this.sanitizeContext(this.buildContext(context));
     this.winstonLogger.debug(message, logContext);
   }
 
@@ -256,7 +256,7 @@ export class LoggerService implements NestLoggerService {
    * @param context - Optional context (overrides global context)
    */
   verbose(message: string, context?: string | LogContext): void {
-    const logContext = this.buildContext(context);
+    const logContext = this.sanitizeContext(this.buildContext(context));
     this.winstonLogger.verbose(message, logContext);
   }
 
@@ -285,6 +285,50 @@ export class LoggerService implements NestLoggerService {
     }
 
     return baseContext;
+  }
+
+  /**
+   * Sanitize context object before logging to prevent clear-text leakage
+   * of secrets and credential-like values from service/repository flows.
+   */
+  private sanitizeContext(context: LogContext): LogContext {
+    const redactPatterns = [
+      /^password$/i,
+      /^token$/i,
+      /^authorization$/i,
+      /^apikey$/i,
+      /^api_key$/i,
+      /^secret$/i,
+      /^keyhash$/i,
+      /^hash$/i,
+      /^plainkey$/i,
+      /^key$/i,
+      /^webhooksecret$/i,
+      /token$/i,
+      /secret$/i,
+      /password$/i,
+      /hash$/i,
+      /key$/i,
+    ];
+
+    const redactValue = (value: any): any => {
+      if (Array.isArray(value)) {
+        return value.map((item) => redactValue(item));
+      }
+
+      if (value && typeof value === 'object') {
+        const output: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) {
+          const shouldRedact = redactPatterns.some((pattern) => pattern.test(k));
+          output[k] = shouldRedact ? '[REDACTED]' : redactValue(v);
+        }
+        return output;
+      }
+
+      return value;
+    };
+
+    return redactValue(context);
   }
 
   /**
